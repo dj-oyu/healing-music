@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>高度な集中音楽ジェネレーター</title>
+    <!-- 最新のTone.jsをCDNから読み込み -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.39/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        .controls {
+            margin: 20px 0;
+            position: relative;
+            z-index: 2;
+        }
+        label {
+            margin-right: 10px;
+        }
+        select, input[type="range"] {
+            margin-right: 20px;
+            padding: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 2;
+            position: relative;
+        }
+        #xyPad {
+            border: 2px solid #ffffff;
+            border-radius: 10px;
+            margin: 20px auto;
+            touch-action: none;
+            z-index: 2;
+            position: relative;
+        }
+        #visualizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            pointer-events: none; /* クリックを無効化 */
+            z-index: 1;
+        }
+        .bar {
+            width: 2px;
+            margin: 1px;
+            background-color: rgba(76, 175, 80, 0.7);
+            transition: height 0.1s;
+        }
+        #currentSection {
+            font-size: 24px;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: inline-block;
+            min-width: 150px;
+            background-color: rgba(30, 144, 255, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 2;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <h1>高度な集中音楽ジェネレーター</h1>
+    
+    <div id="currentSection">セクション: イントロ</div>
+    
+    <div class="controls">
+        <label for="modeSelect">旋法:</label>
+        <select id="modeSelect">
+            <option value="Ionian">イオニアン（メジャー）</option>
+            <option value="Dorian">ドリアン</option>
+            <option value="Phrygian">フリジアン</option>
+            <option value="Lydian">リディアン</option>
+            <option value="Mixolydian">ミクソリディアン</option>
+            <option value="Aeolian">エオリアン（マイナー）</option>
+            <option value="Locrian">ロクリアン</option>
+        </select>
+
+        <label for="tempoRange">テンポ: <span id="tempoValue">70</span> BPM</label>
+        <input type="range" id="tempoRange" min="60" max="120" value="70">
+    </div>
+
+    <div class="controls">
+        <label for="styleSelect">音楽スタイル:</label>
+        <select id="styleSelect">
+            <option value="LoFi">ローファイビート</option>
+            <option value="FutureBass">フューチャーベース</option>
+            <option value="Electro">エレクトロニカ</option>
+            <option value="Ambient">アンビエント</option>
+            <option value="Jazz">ジャズ</option>
+        </select>
+    </div>
+
+    <div class="controls">
+        <label><input type="checkbox" id="chordsToggle" checked> 和音</label>
+        <label><input type="checkbox" id="arpeggioToggle" checked> アルペジオ</label>
+        <label><input type="checkbox" id="beatToggle" checked> ビート</label>
+    </div>
+
+    <button id="startButton">音楽を再生</button>
+    <button id="stopButton">停止</button>
+
+    <canvas id="xyPad" width="300" height="300"></canvas>
+    <p>マウスまたはタッチでX-Yパッドを操作し、音楽を変化させます。</p>
+    
+    <div id="visualizer"></div>
+
+    <script>
+        // Tone.js の初期設定
+        Tone.Transport.bpm.value = 70; // 初期テンポ
+
+        // グローバル変数
+        let currentMode = 'Ionian';
+        let currentStyle = 'LoFi';
+        let currentScale = [];
+        let melodyIndex = 0;
+        let chordIndex = 0;
+        let beatIndex = 0;
+        let xFactor = 0.5; // X-Yパッドの影響度
+        let yFactor = 0.5;
+        let currentSection = 'intro';
+        let sectionIndex = 0;
+
+        // スケール定義
+        const modes = {
+            "Ionian": ["C4", "D4", "E4", "F4", "G4", "A4", "B4"],
+            "Dorian": ["C4", "D4", "D#4", "F4", "G4", "A4", "A#4"],
+            "Phrygian": ["C4", "C#4", "D#4", "F4", "G4", "G#4", "A#4"],
+            "Lydian": ["C4", "D4", "E4", "F#4", "G4", "A4", "B4"],
+            "Mixolydian": ["C4", "D4", "E4", "F4", "G4", "A4", "A#4"],
+            "Aeolian": ["C4", "D4", "D#4", "F4", "G4", "G#4", "A#4"],
+            "Locrian": ["C4", "C#4", "D#4", "F4", "F#4", "G#4", "A#4"]
+        };
+
+        // 音楽スタイルごとの設定
+        const styles = {
+            "LoFi": {
+                synthType: "sine",
+                chordType: "triangle",
+                drumPattern: ["C2", null, "C2", null], // シンプルなキック
+                reverb: 1.5,
+                filterType: "lowpass",
+                filterFrequency: 800,
+                sidechain: false,
+                additionalSamples: ["handclap", "scratch"] // 追加サンプル
+            },
+            "FutureBass": {
+                synthType: "sawtooth",
+                chordType: "square",
+                drumPattern: ["C2", "C2", null, "C2"], // 変化するキック
+                reverb: 3,
+                filterType: "bandpass",
+                filterFrequency: 1000,
+                sidechain: true,
+                additionalSamples: ["handclap", "scratch"]
+            },
+            "Electro": {
+                synthType: "square",
+                chordType: "sawtooth",
+                drumPattern: ["C2", "C2", "C2", "C2"], // 強いキック
+                reverb: 2,
+                filterType: "lowpass",
+                filterFrequency: 600,
+                sidechain: true,
+                additionalSamples: ["handclap", "scratch"]
+            },
+            "Ambient": {
+                synthType: "triangle",
+                chordType: "sine",
+                drumPattern: [null, null, null, null], // ドラムなし
+                reverb: 5,
+                filterType: "highpass",
+                filterFrequency: 400,
+                sidechain: false,
+                additionalSamples: []
+            },
+            "Jazz": {
+                synthType: "sawtooth",
+                chordType: "triangle",
+                drumPattern: ["C2", null, "C2", "C2"], // スウィングリズム
+                reverb: 1,
+                filterType: "bandpass",
+                filterFrequency: 700,
+                sidechain: false,
+                additionalSamples: ["handclap"]
+            }
+        };
+
+        // セクション遷移のマルコフ連鎖
+        const sectionTransitions = {
+            "intro": ["verse"],
+            "verse": ["chorus", "bridge"],
+            "chorus": ["verse", "drop"],
+            "bridge": ["chorus"],
+            "drop": ["chorus", "bridge"]
+        };
+
+        // メロディのマルコフ連鎖
+        const melodyTransitions = {
+            "C4": ["D4", "E4", "G4"],
+            "D4": ["E4", "F4", "A4"],
+            "E4": ["F4", "G4", "B4"],
+            "F4": ["G4", "A4", "C5"],
+            "G4": ["A4", "B4", "C5"],
+            "A4": ["B4", "C5", "D5"],
+            "B4": ["C5", "D5", "E5"],
+            "C5": ["D5", "E5", "G5"],
+            "D5": ["E5", "F5", "A5"],
+            "E5": ["F5", "G5", "B5"],
+            // Add more transitions as needed
+        };
+
+        // サンプル音のロード
+        const samples = {
+            "handclap": "https://cdn.jsdelivr.net/gh/Tonejs/Tone.js/examples/audio/handclap.wav",
+            "scratch": "https://cdn.jsdelivr.net/gh/Tonejs/Tone.js/examples/audio/scratch.wav"
+        };
+        const samplePlayers = new Tone.Players(samples).toDestination();
+
+        // シンセサイザーとエフェクトの設定
+        let synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: styles[currentStyle].synthType },
+            envelope: { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1 }
+        }).toDestination();
+
+        let chordSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: styles[currentStyle].chordType },
+            envelope: { attack: 0.2, decay: 0.3, sustain: 0.4, release: 1.5 }
+        }).toDestination();
+
+        // リバーブエフェクトの追加
+        let reverb = new Tone.Reverb({ decay: styles[currentStyle].reverb }).toDestination();
+        synth.connect(reverb);
+        chordSynth.connect(reverb);
+
+        // フィルターエフェクトの追加
+        let filter = new Tone.Filter(styles[currentStyle].filterFrequency, styles[currentStyle].filterType).toDestination();
+        synth.connect(filter);
+        chordSynth.connect(filter);
+
+        // サイドチェーンコンプレッションの設定
+        let compressor;
+        if (styles[currentStyle].sidechain) {
+            compressor = new Tone.Compressor({
+                threshold: -24,
+                ratio: 12
+            }).toDestination();
+            filter.connect(compressor);
+        }
+
+        const drum = new Tone.MembraneSynth().toDestination();
+
+        // UI要素の取得
+        const modeSelect = document.getElementById("modeSelect");
+        const tempoRange = document.getElementById("tempoRange");
+        const tempoValue = document.getElementById("tempoValue");
+        const styleSelect = document.getElementById("styleSelect");
+        const chordsToggle = document.getElementById("chordsToggle");
+        const arpeggioToggle = document.getElementById("arpeggioToggle");
+        const beatToggle = document.getElementById("beatToggle");
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+        const xyPad = document.getElementById("xyPad");
+        const ctx = xyPad.getContext("2d");
+        const visualizer = document.getElementById("visualizer");
+        const currentSectionDisplay = document.getElementById("currentSection");
+
+        // スケールの更新
+        function updateScale() {
+            currentScale = modes[currentMode];
+        }
+
+        // 音楽スタイルの更新
+        function updateStyle() {
+            currentStyle = styleSelect.value;
+            synth.set({
+                oscillator: { type: styles[currentStyle].synthType }
+            });
+            chordSynth.set({
+                oscillator: { type: styles[currentStyle].chordType }
+            });
+            reverb.decay = styles[currentStyle].reverb;
+            reverb.generate(); // リバーブの設定を反映
+            filter.type = styles[currentStyle].filterType;
+            filter.frequency.value = styles[currentStyle].filterFrequency;
+
+            // サイドチェーンの設定
+            if (compressor) {
+                compressor.disconnect();
+                compressor = null;
+            }
+            if (styles[currentStyle].sidechain) {
+                compressor = new Tone.Compressor({
+                    threshold: -24,
+                    ratio: 12
+                }).toDestination();
+                filter.connect(compressor);
+            }
+
+            // サンプル音の設定
+            samplePlayers.disconnect();
+            if (styles[currentStyle].additionalSamples.length > 0) {
+                samplePlayers.connect(reverb);
+            } else {
+                samplePlayers.toDestination();
+            }
+        }
+
+        // モード選択のイベントリスナー
+        modeSelect.addEventListener("change", () => {
+            currentMode = modeSelect.value;
+            updateScale();
+        });
+
+        // テンポ調整のイベントリスナー
+        tempoRange.addEventListener("input", () => {
+            Tone.Transport.bpm.value = tempoRange.value;
+            tempoValue.textContent = tempoRange.value;
+        });
+
+        // スタイル選択のイベントリスナー
+        styleSelect.addEventListener("change", () => {
+            updateStyle();
+        });
+
+        // 初期スケールとスタイルの設定
+        updateScale();
+        updateStyle();
+
+        // セクションごとの和音進行
+        const chordProgressions = {
+            "Ionian": [
+                ["C4", "E4", "G4"], // I
+                ["F4", "A4", "C5"], // IV
+                ["G4", "B4", "D5"], // V
+                ["A4", "C5", "E5"]  // vi
+            ],
+            "Dorian": [
+                ["C4", "D4", "G4"], // i
+                ["F4", "A4", "C5"], // IV
+                ["G4", "B4", "D5"], // V
+                ["A4", "C5", "E5"]  // ii
+            ],
+            "Phrygian": [
+                ["C4", "C#4", "G4"], // i
+                ["F4", "G#4", "C5"], // VI
+                ["G4", "A#4", "D5"], // VII
+                ["A4", "C5", "F5"]   // iv
+            ],
+            "Lydian": [
+                ["C4", "E4", "G4", "B4"], // I
+                ["D4", "F#4", "A4"], // ii
+                ["E4", "G#4", "B4"], // iii
+                ["F#4", "A#4", "C#5"] // #IV
+            ],
+            "Mixolydian": [
+                ["C4", "E4", "G4"], // I
+                ["D4", "F4", "A4"], // ii
+                ["E4", "G4", "B4"], // iii
+                ["F4", "A4", "C5"]  // IV
+            ],
+            "Aeolian": [
+                ["C4", "D#4", "G4"], // i
+                ["F4", "G#4", "C5"], // VI
+                ["G4", "A#4", "D5"], // VII
+                ["A4", "C5", "F5"]   // iv
+            ],
+            "Locrian": [
+                ["C4", "C#4", "D#4"], // i
+                ["F4", "F#4", "G#4"], // II
+                ["G#4", "A#4", "D4"], // III
+                ["A#4", "C#5", "F5"]  // iv
+            ]
+        };
+
+        // セクションごとのメロディ進行
+        const melodyPatterns = {
+            "intro": {
+                scaleSteps: [0, 2, 4, 5],
+                rhythm: ["4n", "4n", "4n", "4n"]
+            },
+            "verse": {
+                scaleSteps: [0, 2, 4, 5, 7, 9, 11],
+                rhythm: ["8n", "8n", "8n", "8n"]
+            },
+            "chorus": {
+                scaleSteps: [7, 9, 11, 12],
+                rhythm: ["4n", "4n", "4n", "4n"]
+            },
+            "bridge": {
+                scaleSteps: [5, 7, 9, 11],
+                rhythm: ["8n", "8n", "8n", "8n"]
+            },
+            "drop": {
+                scaleSteps: [12, 14, 16, 17],
+                rhythm: ["2n", "2n", "2n", "2n"]
+            }
+        };
+
+        // メロディのマルコフ連鎖による生成
+        let currentMelodyNote = "C4"; // 初期ノート
+
+        function getNextMelodyNote(currentNote) {
+            const possibleNextNotes = melodyTransitions[currentNote];
+            if (possibleNextNotes && possibleNextNotes.length > 0) {
+                const nextNote = possibleNextNotes[Math.floor(Math.random() * possibleNextNotes.length)];
+                return nextNote;
+            } else {
+                // デフォルトの次ノート
+                return currentScale[Math.floor(Math.random() * currentScale.length)];
+            }
+        }
+
+        // メロディのループ
+        Tone.Transport.scheduleRepeat(time => {
+            if (arpeggioToggle.checked) {
+                let noteName;
+                if (currentSection === 'intro') {
+                    // イントロではシンプルなパッド音
+                    noteName = currentMelodyNote;
+                } else {
+                    // 他のセクションではマルコフ連鎖でメロディを生成
+                    currentMelodyNote = getNextMelodyNote(currentMelodyNote);
+                    noteName = currentMelodyNote;
+                }
+
+                // X-Yパッドの影響でノートのオクターブを変化
+                let octaveShift = Math.floor(yFactor * 2) - 1; // -1, 0, 1
+                let octave = parseInt(noteName.slice(-1)) + octaveShift;
+                octave = Math.max(2, Math.min(7, octave)); // オクターブ範囲の制限
+                let baseNote = noteName.slice(0, -1);
+                noteName = baseNote + octave;
+
+                // セクションごとの音域の変化
+                if (currentSection === 'chorus' || currentSection === 'drop') {
+                    octave += 1;
+                    octave = Math.min(7, octave);
+                    noteName = baseNote + octave;
+                }
+
+                // ランダムなリズムパターンのバリエーション
+                const pattern = melodyPatterns[currentSection];
+                const duration = pattern.rhythm[Math.floor(Math.random() * pattern.rhythm.length)];
+                const velocity = Math.random() * 0.5 + 0.5; // 0.5 - 1.0
+
+                synth.triggerAttackRelease(noteName, duration, time, velocity);
+            }
+        }, "4n"); // 4分音符ごと
+
+        // 和音のループ
+        Tone.Transport.scheduleRepeat(time => {
+            if (chordsToggle.checked) {
+                let progression = chordProgressions[currentMode] || chordProgressions["Ionian"];
+                let chord;
+                switch (currentSection) {
+                    case 'intro':
+                        chord = progression[0]; // イントロはI和音のみ
+                        break;
+                    case 'verse':
+                        chord = progression[Math.floor(Math.random() * 2)]; // I or IV
+                        break;
+                    case 'chorus':
+                        chord = progression[Math.floor(Math.random() * progression.length)]; // ランダム
+                        break;
+                    case 'bridge':
+                        chord = progression[Math.floor(Math.random() * progression.length)]; // ランダム
+                        break;
+                    case 'drop':
+                        chord = progression[Math.floor(Math.random() * progression.length)]; // ランダム
+                        break;
+                    default:
+                        chord = progression[0];
+                }
+                chordSynth.triggerAttackRelease(chord, "2n", time);
+                chordIndex++;
+            }
+        }, "2n"); // 2分音符ごと
+
+        // ビートのループ
+        Tone.Transport.scheduleRepeat(time => {
+            if (beatToggle.checked) {
+                let pattern = styles[currentStyle].drumPattern;
+                let beat = pattern[Math.floor(Math.random() * pattern.length)];
+
+                // ビートの強弱をセクションごとに調整
+                let velocity = (currentSection === 'drop') ? 1.0 : (Math.random() * 0.3 + 0.7); // ドロップでは強め
+
+                if (beat) {
+                    drum.triggerAttackRelease(beat, "16n", time, velocity);
+
+                    // 追加サンプルの再生
+                    if (styles[currentStyle].additionalSamples.length > 0) {
+                        // ランダムに追加サンプルを再生
+                        if (Math.random() < 0.3) { // 30%の確率で再生
+                            let sample = styles[currentStyle].additionalSamples[Math.floor(Math.random() * styles[currentStyle].additionalSamples.length)];
+                            samplePlayers.player(sample).start(time);
+                        }
+                    }
+                }
+                beatIndex++;
+            }
+        }, "16n"); // 16分音符ごと
+
+        // セクション管理のマルコフ連鎖
+        function getNextSection(currentSection) {
+            const possibleNextSections = sectionTransitions[currentSection];
+            if (possibleNextSections && possibleNextSections.length > 0) {
+                return possibleNextSections[Math.floor(Math.random() * possibleNextSections.length)];
+            } else {
+                // デフォルトの次セクション
+                return 'verse';
+            }
+        }
+
+        // セクション遷移のスケジュール
+        Tone.Transport.scheduleRepeat(time => {
+            currentSection = getNextSection(currentSection);
+            currentSectionDisplay.textContent = `セクション: ${translateSection(currentSection)}`;
+            currentSectionDisplay.style.backgroundColor = getSectionColor(currentSection);
+            adjustForSection(time, currentSection);
+            console.log(`現在のセクション: ${currentSection}`);
+        }, "4m"); // 4小節ごと
+
+        function adjustForSection(time, section) {
+            switch (section) {
+                case 'intro':
+                    // イントロではテンポを低くし、メロディをシンプルに
+                    Tone.Transport.bpm.rampTo(70, 2, time);
+                    filter.frequency.rampTo(800, 2, time);
+                    // パッドの設定を強化
+                    synth.set({ 
+                        oscillator: { type: "sine" },
+                        envelope: { attack: 0.5, decay: 0.3, sustain: 0.5, release: 2 }
+                    });
+                    break;
+                case 'verse':
+                    // ヴァースではテンポを少し上げ、メロディを穏やかに
+                    Tone.Transport.bpm.rampTo(75, 2, time);
+                    filter.frequency.rampTo(900, 2, time);
+                    synth.set({ 
+                        oscillator: { type: styles[currentStyle].synthType },
+                        envelope: { attack: 0.1, decay: 0.2, sustain: 0.5, release: 1 }
+                    });
+                    break;
+                case 'chorus':
+                    // コーラスではテンポを上げ、フィルターを開放
+                    Tone.Transport.bpm.rampTo(80, 2, time);
+                    filter.frequency.rampTo(1000, 2, time);
+                    // エネルギーを高めるために和音や追加シンセを追加
+                    synth.set({ 
+                        oscillator: { type: styles[currentStyle].synthType },
+                        envelope: { attack: 0.1, decay: 0.2, sustain: 0.7, release: 1 }
+                    });
+                    break;
+                case 'bridge':
+                    // ブリッジではフィルターを閉じ、リバーブを強化
+                    Tone.Transport.bpm.rampTo(78, 2, time);
+                    filter.frequency.rampTo(700, 2, time);
+                    reverb.decay = styles[currentStyle].reverb * 1.2;
+                    reverb.generate(time + 2);
+                    break;
+                case 'drop':
+                    // ドロップではテンポを急上昇させ、エネルギーを最大化
+                    Tone.Transport.bpm.rampTo(100, 2, time);
+                    filter.frequency.rampTo(1500, 2, time);
+                    reverb.decay = styles[currentStyle].reverb * 1.5;
+                    reverb.generate(time + 2);
+                    break;
+                default:
+                    // デフォルト設定
+                    Tone.Transport.bpm.rampTo(70, 2, time);
+                    filter.frequency.rampTo(styles[currentStyle].filterFrequency, 2, time);
+            }
+        }
+
+        // セクション名の翻訳
+        function translateSection(section) {
+            switch(section) {
+                case 'intro': return 'イントロ';
+                case 'verse': return 'ヴァース';
+                case 'chorus': return 'コーラス';
+                case 'bridge': return 'ブリッジ';
+                case 'drop': return 'ドロップ';
+                default: return section;
+            }
+        }
+
+        // セクションごとの色設定
+        function getSectionColor(section) {
+            const colors = {
+                'intro': 'rgba(30, 144, 255, 0.7)', // ドジャーブルー
+                'verse': 'rgba(50, 205, 50, 0.7)',   // ライムグリーン
+                'chorus': 'rgba(255, 215, 0, 0.7)',  // ゴールド
+                'bridge': 'rgba(255, 105, 180, 0.7)', // ホットピンク
+                'drop': 'rgba(255, 69, 0, 0.7)'      // オレンジレッド
+            };
+            return colors[section] || 'rgba(255, 255, 255, 0.7)';
+        }
+
+        // X-Yパッドの初期描画
+        function drawPad(x, y) {
+            ctx.clearRect(0, 0, xyPad.width, xyPad.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(x, y, 10, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // X-Yパッドの操作処理
+        function handlePadMove(x, y) {
+            // クランプ処理で無効値を防止
+            x = Math.max(0, Math.min(x, xyPad.width));
+            y = Math.max(0, Math.min(y, xyPad.height));
+
+            // 正規化（0 - 1）
+            xFactor = x / xyPad.width;
+            yFactor = 1 - (y / xyPad.height); // 上が高い値
+
+            // 描画
+            drawPad(x, y);
+
+            // 音楽の変化に反映
+            // X軸: フィルターのカットオフ周波数
+            filter.frequency.value = styles[currentStyle].filterFrequency * xFactor;
+
+            // Y軸: リバーブ量
+            reverb.decay = styles[currentStyle].reverb * yFactor;
+            reverb.generate();
+
+            // 追加エフェクトの調整
+            if (compressor) {
+                compressor.threshold = -24 + (xFactor * 12); // 動的に調整
+                compressor.ratio = 12 + (yFactor * 3); // 動的に調整
+            }
+        }
+
+        // マウスイベントの追加
+        xyPad.addEventListener("mousedown", (e) => {
+            let rect = xyPad.getBoundingClientRect();
+            let x = e.clientX - rect.left;
+            let y = e.clientY - rect.top;
+            handlePadMove(x, y);
+
+            function onMouseMove(event) {
+                let x = event.clientX - rect.left;
+                let y = event.clientY - rect.top;
+                handlePadMove(x, y);
+            }
+
+            function onMouseUp() {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+            }
+
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+        });
+
+        // タッチイベントの追加
+        xyPad.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            let rect = xyPad.getBoundingClientRect();
+            let touch = e.touches[0];
+            let x = touch.clientX - rect.left;
+            let y = touch.clientY - rect.top;
+            handlePadMove(x, y);
+
+            function onTouchMove(event) {
+                let touch = event.touches[0];
+                let x = touch.clientX - rect.left;
+                let y = touch.clientY - rect.top;
+                handlePadMove(x, y);
+            }
+
+            function onTouchEnd() {
+                document.removeEventListener("touchmove", onTouchMove);
+                document.removeEventListener("touchend", onTouchEnd);
+            }
+
+            document.addEventListener("touchmove", onTouchMove);
+            document.addEventListener("touchend", onTouchEnd);
+        });
+
+        // 再生ボタンのイベントリスナー
+        startButton.addEventListener("click", async () => {
+            // ユーザーの操作後にAudioContextを開始
+            await Tone.start();
+            Tone.Transport.start();
+            console.log("再生開始");
+        });
+
+        // 停止ボタンのイベントリスナー
+        stopButton.addEventListener("click", () => {
+            Tone.Transport.stop();
+            melodyIndex = 0;
+            chordIndex = 0;
+            beatIndex = 0;
+            currentSection = 'intro';
+            currentSectionDisplay.textContent = `セクション: ${translateSection(currentSection)}`;
+            currentSectionDisplay.style.backgroundColor = getSectionColor(currentSection);
+            console.log("再生停止");
+        });
+
+        // 初期X-Yパッドの描画
+        drawPad(xyPad.width / 2, xyPad.height / 2);
+
+        // シンプルなビジュアライザーの追加
+        const analyser = new Tone.Analyser("fft", 64);
+        synth.connect(analyser);
+        chordSynth.connect(analyser);
+        drum.connect(analyser);
+        samplePlayers.connect(analyser); // サンプル音も分析対象に追加
+
+        function updateVisualizer() {
+            const data = analyser.getValue();
+            visualizer.innerHTML = ''; // 既存のバーをクリア
+            for (let i = 0; i < data.length; i++) {
+                let barHeight = (data[i] + 140) * 2; // 正規化
+                let bar = document.createElement('div');
+                bar.classList.add('bar');
+                bar.style.height = `${barHeight}px`;
+                visualizer.appendChild(bar);
+            }
+            requestAnimationFrame(updateVisualizer);
+        }
+
+        updateVisualizer();
+    </script>
+</body>
+</html>
