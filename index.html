@@ -26,6 +26,10 @@
         select, input[type="range"] {
             margin-right: 20px;
             padding: 5px;
+            border-radius: 5px;
+            border: none;
+            background-color: rgb(255, 255, 255);
+            color: #080606;
         }
         button {
             padding: 10px 20px;
@@ -34,6 +38,14 @@
             cursor: pointer;
             z-index: 2;
             position: relative;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
         }
         #xyPad {
             border: 2px solid #ffffff;
@@ -42,14 +54,16 @@
             touch-action: none;
             z-index: 2;
             position: relative;
+            background-color: rgba(255, 255, 255, 0.1);
         }
         #visualizer {
-            position: absolute;
-            top: 0;
+            position: fixed;
+            bottom: 0;
             left: 0;
             width: 100%;
-            height: 100%;
+            height: 100px;
             backdrop-filter: blur(10px);
+            background-color: rgba(0, 0, 0, 0.3);
             display: flex;
             align-items: flex-end;
             justify-content: center;
@@ -70,7 +84,10 @@
             display: inline-block;
             min-width: 150px;
             background-color: rgba(30, 144, 255, 0.7);
-            backdrop-filter: blur(5px);
+            z-index: 2;
+            position: relative;
+        }
+        p {
             z-index: 2;
             position: relative;
         }
@@ -159,7 +176,7 @@
                 filterType: "lowpass",
                 filterFrequency: 800,
                 sidechain: false,
-                additionalSamples: ["handclap", "scratch"] // 追加サンプル
+                additionalEffects: ["handclap", "scratch"] // 追加エフェクト
             },
             "FutureBass": {
                 synthType: "sawtooth",
@@ -169,7 +186,7 @@
                 filterType: "bandpass",
                 filterFrequency: 1000,
                 sidechain: true,
-                additionalSamples: ["handclap", "scratch"]
+                additionalEffects: ["handclap", "scratch"]
             },
             "Electro": {
                 synthType: "square",
@@ -179,7 +196,7 @@
                 filterType: "lowpass",
                 filterFrequency: 600,
                 sidechain: true,
-                additionalSamples: ["handclap", "scratch"]
+                additionalEffects: ["handclap", "scratch"]
             },
             "Ambient": {
                 synthType: "triangle",
@@ -189,7 +206,7 @@
                 filterType: "highpass",
                 filterFrequency: 400,
                 sidechain: false,
-                additionalSamples: []
+                additionalEffects: []
             },
             "Jazz": {
                 synthType: "sawtooth",
@@ -199,7 +216,7 @@
                 filterType: "bandpass",
                 filterFrequency: 700,
                 sidechain: false,
-                additionalSamples: ["handclap"]
+                additionalEffects: ["handclap"]
             }
         };
 
@@ -227,12 +244,30 @@
             // Add more transitions as needed
         };
 
-        // サンプル音のロード
-        const samples = {
-            "handclap": "https://cdn.jsdelivr.net/gh/Tonejs/Tone.js/examples/audio/handclap.wav",
-            "scratch": "https://cdn.jsdelivr.net/gh/Tonejs/Tone.js/examples/audio/scratch.wav"
-        };
-        const samplePlayers = new Tone.Players(samples).toDestination();
+        // サウンドエフェクトの生成（ハンドクラップとスクラッチ）
+        // ハンドクラップの再現
+        const handClap = new Tone.Noise("white");
+        const handClapFilter = new Tone.Filter(1500, "highpass").toDestination();
+        const handClapEnvelope = new Tone.AmplitudeEnvelope({
+            attack: 0.001,
+            decay: 0.2,
+            sustain: 0,
+            release: 0.1
+        }).toDestination();
+        handClap.connect(handClapFilter);
+        handClapFilter.connect(handClapEnvelope);
+
+        // スクラッチの再現
+        const scratch = new Tone.Noise("white");
+        const scratchFilter = new Tone.Filter(800, "bandpass").toDestination();
+        const scratchEnvelope = new Tone.AmplitudeEnvelope({
+            attack: 0.005,
+            decay: 0.1,
+            sustain: 0,
+            release: 0.05
+        }).toDestination();
+        scratch.connect(scratchFilter);
+        scratchFilter.connect(scratchEnvelope);
 
         // シンセサイザーとエフェクトの設定
         let synth = new Tone.PolySynth(Tone.Synth, {
@@ -265,6 +300,7 @@
             filter.connect(compressor);
         }
 
+        // ドラムシンセサイザーの設定
         const drum = new Tone.MembraneSynth().toDestination();
 
         // UI要素の取得
@@ -314,13 +350,7 @@
                 filter.connect(compressor);
             }
 
-            // サンプル音の設定
-            samplePlayers.disconnect();
-            if (styles[currentStyle].additionalSamples.length > 0) {
-                samplePlayers.connect(reverb);
-            } else {
-                samplePlayers.toDestination();
-            }
+            // サウンドエフェクトの設定（必要に応じて）
         }
 
         // モード選択のイベントリスナー
@@ -505,12 +535,16 @@
                 if (beat) {
                     drum.triggerAttackRelease(beat, "16n", time, velocity);
 
-                    // 追加サンプルの再生
-                    if (styles[currentStyle].additionalSamples.length > 0) {
-                        // ランダムに追加サンプルを再生
+                    // 追加エフェクトの再生
+                    if (styles[currentStyle].additionalEffects.length > 0) {
+                        // 追加エフェクトの再生確率
                         if (Math.random() < 0.3) { // 30%の確率で再生
-                            let sample = styles[currentStyle].additionalSamples[Math.floor(Math.random() * styles[currentStyle].additionalSamples.length)];
-                            samplePlayers.player(sample).start(time);
+                            let effect = styles[currentStyle].additionalEffects[Math.floor(Math.random() * styles[currentStyle].additionalEffects.length)];
+                            if (effect === "handclap") {
+                                handClapEnvelope.triggerAttackRelease("8n", time);
+                            } else if (effect === "scratch") {
+                                scratchEnvelope.triggerAttackRelease("8n", time);
+                            }
                         }
                     }
                 }
@@ -625,29 +659,33 @@
 
         // X-Yパッドの操作処理
         function handlePadMove(x, y) {
-            // クランプ処理で無効値を防止
-            x = Math.max(0, Math.min(x, xyPad.width));
-            y = Math.max(0, Math.min(y, xyPad.height));
+            try {
+                // クランプ処理で無効値を防止
+                x = Math.max(0, Math.min(x, xyPad.width));
+                y = Math.max(0, Math.min(y, xyPad.height));
 
-            // 正規化（0 - 1）
-            xFactor = x / xyPad.width;
-            yFactor = 1 - (y / xyPad.height); // 上が高い値
+                // 正規化（0 - 1）
+                xFactor = x / xyPad.width;
+                yFactor = 1 - (y / xyPad.height); // 上が高い値
 
-            // 描画
-            drawPad(x, y);
+                // 描画
+                drawPad(x, y);
 
-            // 音楽の変化に反映
-            // X軸: フィルターのカットオフ周波数
-            filter.frequency.value = styles[currentStyle].filterFrequency * xFactor;
+                // 音楽の変化に反映
+                // X軸: フィルターのカットオフ周波数
+                filter.frequency.value = styles[currentStyle].filterFrequency * xFactor;
 
-            // Y軸: リバーブ量
-            reverb.decay = styles[currentStyle].reverb * yFactor;
-            reverb.generate();
+                // Y軸: リバーブ量
+                reverb.decay = styles[currentStyle].reverb * yFactor;
+                reverb.generate();
 
-            // 追加エフェクトの調整
-            if (compressor) {
-                compressor.threshold = -24 + (xFactor * 12); // 動的に調整
-                compressor.ratio = 12 + (yFactor * 3); // 動的に調整
+                // 追加エフェクトの調整
+                if (compressor) {
+                    compressor.threshold = -24 + (xFactor * 12); // 動的に調整
+                    compressor.ratio = 12 + (yFactor * 3); // 動的に調整
+                }
+            } catch (error) {
+                console.error("X-Yパッドの操作中にエラーが発生しました:", error);
             }
         }
 
@@ -726,7 +764,7 @@
         synth.connect(analyser);
         chordSynth.connect(analyser);
         drum.connect(analyser);
-        samplePlayers.connect(analyser); // サンプル音も分析対象に追加
+        // サウンドエフェクトはエンベロープに接続されているため、直接接続しない
 
         function updateVisualizer() {
             const data = analyser.getValue();
