@@ -28,8 +28,8 @@
             padding: 5px;
             border-radius: 5px;
             border: none;
-            background-color: rgb(255, 255, 255);
-            color: #080606;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
         }
         button {
             padding: 10px 20px;
@@ -60,21 +60,20 @@
             position: fixed;
             bottom: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
-            filter: blur(3px);
-            background-color: rgb(0, 0, 0);
+            width: 100%;
+            height: 100px;
+            backdrop-filter: blur(10px);
+            background-color: rgba(0, 0, 0, 0.3);
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             justify-content: center;
             pointer-events: none; /* クリックを無効化 */
             z-index: 1;
         }
         .bar {
-            width: 20px;
-            margin: 0px;
-            border-radius: 7px;
-            background-color: rgb(76, 175, 80);
+            width: 2px;
+            margin: 1px;
+            background-color: rgba(76, 175, 80, 0.7);
             transition: height 0.1s;
         }
         #currentSection {
@@ -177,7 +176,7 @@
                 filterType: "lowpass",
                 filterFrequency: 800,
                 sidechain: false,
-                additionalEffects: ["handclap", "scratch"] // 追加エフェクト
+                additionalEffects: [] // ハンドクラップとスクラッチを除去
             },
             "FutureBass": {
                 synthType: "sawtooth",
@@ -187,7 +186,7 @@
                 filterType: "bandpass",
                 filterFrequency: 1000,
                 sidechain: true,
-                additionalEffects: ["handclap", "scratch"]
+                additionalEffects: []
             },
             "Electro": {
                 synthType: "square",
@@ -197,7 +196,7 @@
                 filterType: "lowpass",
                 filterFrequency: 600,
                 sidechain: true,
-                additionalEffects: ["handclap", "scratch"]
+                additionalEffects: []
             },
             "Ambient": {
                 synthType: "triangle",
@@ -217,7 +216,7 @@
                 filterType: "bandpass",
                 filterFrequency: 700,
                 sidechain: false,
-                additionalEffects: ["handclap"]
+                additionalEffects: []
             }
         };
 
@@ -242,33 +241,21 @@
             "C5": ["D5", "E5", "G5"],
             "D5": ["E5", "F5", "A5"],
             "E5": ["F5", "G5", "B5"],
-            // Add more transitions as needed
+            // 必要に応じてさらに追加
         };
 
-        // サウンドエフェクトの生成（ハンドクラップとスクラッチ）
-        // ハンドクラップの再現
-        const handClap = new Tone.Noise("white");
-        const handClapFilter = new Tone.Filter(1500, "highpass").toDestination();
-        const handClapEnvelope = new Tone.AmplitudeEnvelope({
-            attack: 0.001,
-            decay: 0.2,
-            sustain: 0,
-            release: 0.1
-        }).toDestination();
-        handClap.connect(handClapFilter);
-        handClapFilter.connect(handClapEnvelope);
+        // LoFiスタイル用のホワイトノイズとエンベロープの設定
+        const whiteNoise = new Tone.Noise("white").start();
+        const noiseGain = new Tone.Gain(0).toDestination(); // 初期ゲインを0に設定
+        whiteNoise.connect(noiseGain);
 
-        // スクラッチの再現
-        const scratch = new Tone.Noise("white");
-        const scratchFilter = new Tone.Filter(800, "bandpass").toDestination();
-        const scratchEnvelope = new Tone.AmplitudeEnvelope({
+        const noiseEnvelope = new Tone.Envelope({
             attack: 0.005,
             decay: 0.1,
             sustain: 0,
             release: 0.05
         }).toDestination();
-        scratch.connect(scratchFilter);
-        scratchFilter.connect(scratchEnvelope);
+        noiseEnvelope.connect(noiseGain.gain); // EnvelopeをGainのゲインに接続
 
         // シンセサイザーとエフェクトの設定
         let synth = new Tone.PolySynth(Tone.Synth, {
@@ -351,7 +338,12 @@
                 filter.connect(compressor);
             }
 
-            // サウンドエフェクトの設定（必要に応じて）
+            // LoFiスタイル時にホワイトノイズを再生
+            if (currentStyle === "LoFi") {
+                noiseGain.gain.value = 0.02; // 初期音量
+            } else {
+                noiseGain.gain.value = 0; // 他のスタイルではノイズをオフ
+            }
         }
 
         // モード選択のイベントリスナー
@@ -493,7 +485,7 @@
 
                 synth.triggerAttackRelease(noteName, duration, time, velocity);
             }
-        }, "8n"); // 8分音符ごと
+        }, "4n"); // 4分音符ごと
 
         // 和音のループ
         Tone.Transport.scheduleRepeat(time => {
@@ -536,17 +528,9 @@
                 if (beat) {
                     drum.triggerAttackRelease(beat, "16n", time, velocity);
 
-                    // 追加エフェクトの再生
-                    if (styles[currentStyle].additionalEffects.length > 0) {
-                        // 追加エフェクトの再生確率
-                        if (Math.random() < 0.3) { // 30%の確率で再生
-                            let effect = styles[currentStyle].additionalEffects[Math.floor(Math.random() * styles[currentStyle].additionalEffects.length)];
-                            if (effect === "handclap") {
-                                handClapEnvelope.triggerAttackRelease("4n", time);
-                            } else if (effect === "scratch") {
-                                scratchEnvelope.triggerAttackRelease("4n", time);
-                            }
-                        }
+                    // LoFiスタイル時にホワイトノイズの音量をビートに同期して変化
+                    if (currentStyle === "LoFi") {
+                        noiseEnvelope.triggerAttackRelease(0.05, "8n", time);
                     }
                 }
                 beatIndex++;
@@ -765,17 +749,16 @@
         synth.connect(analyser);
         chordSynth.connect(analyser);
         drum.connect(analyser);
-        // サウンドエフェクトはエンベロープに接続されているため、直接接続しない
+        // LoFiノイズは別の経路で接続されているため、ここでは不要
 
         function updateVisualizer() {
             const data = analyser.getValue();
             visualizer.innerHTML = ''; // 既存のバーをクリア
-            for (let i = 0; i < data.length / 2; i++) {
-                let barHeight = (data[i*2] + data[i*2+1] + 200) << 2; // 正規化
+            for (let i = 0; i < data.length; i++) {
+                let barHeight = (data[i] + 140) * 2; // 正規化
                 let bar = document.createElement('div');
                 bar.classList.add('bar');
                 bar.style.height = `${barHeight}px`;
-                bar.style.backgroundColor = getSectionColor(currentSection);
                 visualizer.appendChild(bar);
             }
             requestAnimationFrame(updateVisualizer);
