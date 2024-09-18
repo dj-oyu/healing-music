@@ -115,6 +115,9 @@
         <input type="range" id="tempoRange" min="60" max="120" value="70">
     </div>
 
+    <button id="playHandClapButton">Play Hand Clap</button>
+    <button id="playScratchButton">Play Scratch</button>
+
     <div class="controls">
         <label for="styleSelect">音楽スタイル:</label>
         <select id="styleSelect">
@@ -269,6 +272,21 @@
         }).toDestination();
         scratch.connect(scratchFilter);
         scratchFilter.connect(scratchEnvelope);
+
+        // ハンドクラップとスクラッチの音を再生する関数
+        function playHandClap() {
+            handClap.start();
+            handClapEnvelope.triggerAttackRelease("16n");
+        }
+
+        function playScratch() {
+            scratch.start();
+            scratchEnvelope.triggerAttackRelease("16n");
+        }
+
+        // テスト用にボタンを追加して音を再生
+        document.getElementById("playHandClapButton").addEventListener("click", playHandClap);
+        document.getElementById("playScratchButton").addEventListener("click", playScratch);
 
         // シンセサイザーとエフェクトの設定
         let synth = new Tone.PolySynth(Tone.Synth, {
@@ -775,6 +793,7 @@
                 let bar = document.createElement('div');
                 bar.classList.add('bar');
                 bar.style.height = `${barHeight}px`;
+                bar.style.backgroundColor = getSectionColor(currentSection);
                 visualizer.appendChild(bar);
             }
             requestAnimationFrame(updateVisualizer);
